@@ -18,6 +18,21 @@
             margin: 0;
             min-height: 100vh;
         }
+        /* Backend status badge */
+        .backend-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .backend-dot { width:10px; height:10px; border-radius:50%; background:#F59E0B; box-shadow:0 0 8px rgba(245,158,11,0.6); }
+        .backend-online .backend-dot { background: #10B981; box-shadow: 0 0 8px rgba(16,185,129,0.6); }
+        .backend-offline .backend-dot { background: #EF4444; box-shadow: 0 0 8px rgba(239,68,68,0.5); }
 
         /* Starry background */
         #canvas-container {
@@ -218,7 +233,12 @@
             <a href="resource.html" class="nav-link" data-section="about">Resources</a>
         </nav>
         
-        <div class="top-right"></div>
+        <div class="top-right">
+            <div id="backendStatus" class="backend-badge" aria-live="polite">
+                <span class="backend-dot" aria-hidden="true"></span>
+                <span id="backendStatusText">Backend: Checking…</span>
+            </div>
+        </div>
     </header>
 
     <main>
@@ -475,6 +495,24 @@
             statusEl.className = ok ? "muted" : "muted" + " text-red-500"; // Simple color change based on status
             statusEl.style.color = ok ? '#34D399' : '#F87171';
         }
+        
+        // Update backend status badge in header
+        function setBackendStatus(isOnline, text = null) {
+            const wrap = document.getElementById('backendStatus');
+            const txt = document.getElementById('backendStatusText');
+            if (!wrap || !txt) return;
+            wrap.classList.remove('backend-online', 'backend-offline');
+            if (isOnline === true) {
+                wrap.classList.add('backend-online');
+                txt.textContent = text || 'Backend: Online';
+            } else if (isOnline === false) {
+                wrap.classList.add('backend-offline');
+                txt.textContent = text || 'Backend: Offline';
+            } else {
+                // checking / unknown
+                txt.textContent = text || 'Backend: Checking…';
+            }
+        }
 
         function fillSelect(sel, items, defaultVal = null) {
             sel.innerHTML = items.map(c => `<option value="${c}" ${c === defaultVal ? 'selected' : ''}>${c}</option>`).join('');
@@ -700,8 +738,10 @@ async function fetchModelKeys() {
         modelSelect.value = data.model_keys[0] || '';
         await fetchModelInfo(modelSelect.value); // Load initial model info
         btnAnalyze.disabled = false;
+        setBackendStatus(true); // backend reachable
     } catch (e) {
         setStatus("Error fetching model list. Check server status.", false);
+        setBackendStatus(false);
     }
 }
 
@@ -713,6 +753,7 @@ async function fetchModelInfo(modelKey) {
         reqNote.innerHTML = `Model **${modelKey}** requires **${mi.n_train_features}** features. <a href="#" onclick="alert('Required features:\\n${mi.train_features.join(', ')}')">Click to view list.</a>`;
     } catch (e) {
         setStatus(`Error fetching model info for ${modelKey}.`, false);
+        setBackendStatus(false);
     }
 }
 
@@ -848,7 +889,10 @@ modelSelect.onchange = () => {
         };
 
         // --- Initialization ---
-        document.addEventListener('DOMContentLoaded', fetchModelKeys);
+        document.addEventListener('DOMContentLoaded', () => {
+            setBackendStatus(null); // start with checking state
+            fetchModelKeys();
+         });
     </script>
 </body>
 </html>
