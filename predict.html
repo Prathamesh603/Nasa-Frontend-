@@ -888,11 +888,58 @@ modelSelect.onchange = () => {
             }
         };
 
-        // --- Initialization ---
+        // --- Initialization (improved wake + retry + keep-alive) ---
         document.addEventListener('DOMContentLoaded', () => {
-            setBackendStatus(null); // start with checking state
-            fetchModelKeys();
-         });
+    setBackendStatus(null); // show "Checking…"
+
+    let attempts = 0;
+    let retryDelay = 2000; // ms
+    const maxFastRetries = 6;
+    let keepAliveTimer = null;
+    let waking = false;
+
+    async function tryWake() {
+        if (waking) return;
+        waking = true;
+        attempts++;
+        try {
+            // Abort if request takes too long
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+
+            // lightweight GET to wake backend (same endpoint used by app)
+            const res = await fetch(`${API_BASE}/api/model-keys`, { signal: controller.signal });
+            clearTimeout(timeout);
+
+            if (!res.ok) throw new Error('non-OK response');
+
+            // backend awake — populate UI and enable buttons
+            await fetchModelKeys();
+
+            // start keep-alive pings every 4 minutes to try preventing sleep
+            if (keepAliveTimer) clearInterval(keepAliveTimer);
+            keepAliveTimer = setInterval(() => {
+                fetch(`${API_BASE}/api/model-keys`).catch(() => { /* ignore */ });
+            }, 4 * 60 * 1000);
+
+            waking = false;
+        } catch (err) {
+            // mark offline and schedule retry with backoff
+            setBackendStatus(false);
+            waking = false;
+            if (attempts < maxFastRetries) {
+                setTimeout(tryWake, retryDelay);
+                retryDelay = Math.min(60000, Math.floor(retryDelay * 1.8)); // ramp up
+            } else {
+                // slower periodic retry after a few fast attempts
+                setTimeout(tryWake, 60 * 1000);
+            }
+        }
+    }
+
+    // start attempting to wake the backend
+    tryWake();
+});
     </script>
 </body>
 </html>
